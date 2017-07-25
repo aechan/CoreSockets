@@ -88,14 +88,29 @@ namespace CoreSockets
                 Console.WriteLineColor("Reading from client");
                 var byteCount = await networkStream.ReadAsync(buffer, 0, buffer.Length);
                 var request = Encoding.UTF8.GetString(buffer, 0, byteCount);
+
+                // if a handshake is requested
                 if (new Regex("^GET").IsMatch(request))
                 {
                     Console.WriteColor("[Server] ", ConsoleColor.Black, ConsoleColor.Cyan);
                     Console.WriteLineColor("Client wrote" + Environment.NewLine + request);
                     await networkStream.WriteAsync(ServerResponseBytes(request), 0, ServerResponseBytes(request).Length);
                     Console.WriteColor("[Server] ", ConsoleColor.Black, ConsoleColor.Cyan);
-                    Console.WriteLineColor("Response has been written", ConsoleColor.Black, ConsoleColor.Yellow);
-                }   
+                    Console.WriteLineColor("Handshake successful", ConsoleColor.Black, ConsoleColor.Yellow);
+
+                    // after a successful handshake keep connection alive indefinitely.
+                    while (true)
+                    {
+                        while (!networkStream.DataAvailable) ;
+                        var buf = new byte[4096];
+                        var count = await networkStream.ReadAsync(buf, 0, buf.Length);
+
+                        Console.WriteColor("[Server] ", ConsoleColor.Black, ConsoleColor.Cyan);
+                        Console.WriteLineColor("Client wrote" + Environment.NewLine + request);
+                        Console.WriteLineColor(GetDecodedData(buf, count));
+                    }
+                }
+                
             }
         }
 
@@ -121,6 +136,55 @@ namespace CoreSockets
                     System.Console.WriteLine("Server response was {0}", response);
                 }
             }
+        }
+        /// <summary>
+        /// Decodes a Websocket message according to RFC 6455
+        /// </summary>
+        /// <param name="buffer"></param>
+        /// <param name="length"></param>
+        /// <returns></returns>
+        private static string GetDecodedData(byte[] buffer, int length)
+        {
+            byte b = buffer[1];
+            int dataLength = 0;
+            int totalLength = 0;
+            int keyIndex = 0;
+
+            if (b - 128 <= 125)
+            {
+                dataLength = b - 128;
+                keyIndex = 2;
+                totalLength = dataLength + 6;
+            }
+
+            if (b - 128 == 126)
+            {
+                dataLength = BitConverter.ToInt16(new byte[] { buffer[3], buffer[2] }, 0);
+                keyIndex = 4;
+                totalLength = dataLength + 8;
+            }
+
+            if (b - 128 == 127)
+            {
+                dataLength = (int)BitConverter.ToInt64(new byte[] { buffer[9], buffer[8], buffer[7], buffer[6], buffer[5], buffer[4], buffer[3], buffer[2] }, 0);
+                keyIndex = 10;
+                totalLength = dataLength + 14;
+            }
+
+            if (totalLength > length)
+                throw new Exception("The buffer length is small than the data length");
+
+            byte[] key = new byte[] { buffer[keyIndex], buffer[keyIndex + 1], buffer[keyIndex + 2], buffer[keyIndex + 3] };
+
+            int dataIndex = keyIndex + 4;
+            int count = 0;
+            for (int i = dataIndex; i < totalLength; i++)
+            {
+                buffer[i] = (byte)(buffer[i] ^ key[count % 4]);
+                count++;
+            }
+
+            return Encoding.ASCII.GetString(buffer, dataIndex, dataLength);
         }
 
     }
