@@ -13,7 +13,7 @@ namespace CoreSockets
 
             WebSocketServer.ConnectAsTcpClient(server.port);
 
-            Console.ReadLine();
+            System.Console.ReadLine();
         }
     }
 }
