@@ -11,7 +11,7 @@ namespace CoreSockets
             WebSocketServer server = new WebSocketServer(8080);
             server.Start();
 
-            WebSocketServer.ConnectAsTcpClient(server.port);
+            
 
             System.Console.ReadLine();
         }
