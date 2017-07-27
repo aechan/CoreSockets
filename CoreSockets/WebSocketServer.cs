@@ -5,6 +5,7 @@ using System.Net.Sockets;
 using System.Net;
 using System.Security.Cryptography;
 using System.Text.RegularExpressions;
+using System.Threading;
 
 namespace CoreSockets
 {
@@ -21,6 +22,19 @@ namespace CoreSockets
             get;
             private set;
         }
+
+        public List<Client> Clients
+        {
+            get;
+            private set;
+        }
+
+        // flag to hop out of the listen loop
+        private bool isListening;
+        
+        public delegate void OnMessageHandler(string msg);
+        public event OnMessageHandler OnMessage = delegate { };
+
 
         private TcpListener _server;
 
@@ -63,25 +77,30 @@ namespace CoreSockets
         {
             this.port = port;
             this.ip = ip;
+            
             _server = new TcpListener(ip, port);
         }
 
 
         public void Start()
         {
-            
             System.Console.WriteLine("WebSocketServer started on {0}:{1}", ip, port);
-            StartListener();
+            _server.Start();
+            isListening = true;
+            Listen();
+
         }
 
-        private async void StartListener()
+        private async void Listen()
         {
-            _server.Start();
-            var tcpClient = await _server.AcceptTcpClientAsync();
-            Console.WriteColor("[Server] ", ConsoleColor.Black, ConsoleColor.Cyan);
-            Console.WriteLineColor("Client has connected");
-            using (var networkStream = tcpClient.GetStream())
+
+            while (isListening)
             {
+
+                var tcpClient = await _server.AcceptTcpClientAsync();
+                Console.WriteColor("[Server] ", ConsoleColor.Black, ConsoleColor.Cyan);
+                Console.WriteLineColor("Client has connected");
+                var networkStream = tcpClient.GetStream();
                 
                 var buffer = new byte[4096];
                 Console.WriteColor("[Server] ", ConsoleColor.Black, ConsoleColor.Cyan);
@@ -98,20 +117,28 @@ namespace CoreSockets
                     Console.WriteColor("[Server] ", ConsoleColor.Black, ConsoleColor.Cyan);
                     Console.WriteLineColor("Handshake successful", ConsoleColor.Black, ConsoleColor.Yellow);
 
-                    // after a successful handshake keep connection alive indefinitely.
-                    while (true)
+                    // after a successful handshake spawn a new thread and keep connection alive indefinitely.
+                    var childSocketThread = new Thread(async () =>
                     {
-                        while (!networkStream.DataAvailable) ;
-                        var buf = new byte[4096];
-                        var count = await networkStream.ReadAsync(buf, 0, buf.Length);
+                        while (tcpClient.GetState() == System.Net.NetworkInformation.TcpState.Established)
+                        {
+                            var buf = new byte[4096];
+                            var count = await networkStream.ReadAsync(buf, 0, buf.Length);
 
-                        Console.WriteColor("[Server] ", ConsoleColor.Black, ConsoleColor.Cyan);
-                        Console.WriteLineColor("Client wrote" + Environment.NewLine + request);
-                        Console.WriteLineColor(GetDecodedData(buf, count));
-                    }
+                            OnMessage(GetDecodedData(buf, count));
+                        }
+
+                    });
+                    childSocketThread.Start();                        
                 }
+
                 
             }
+        }
+
+        public void Stop()
+        {
+            isListening = false;
         }
 
         public static async void ConnectAsTcpClient(int port)
@@ -188,4 +215,5 @@ namespace CoreSockets
         }
 
     }
+
 }
