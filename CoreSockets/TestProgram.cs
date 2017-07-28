@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Text;
+using CoreSockets.Service;
 
 namespace CoreSockets
 {
@@ -17,9 +18,9 @@ namespace CoreSockets
         }
 
 
-        public static void PrintMessage(string message)
+        public static void PrintMessage(string message, Client c)
         {
-            Console.WriteColor("[Client] ", ConsoleColor.Black, ConsoleColor.Magenta);
+            CoreSockets.Service.Console.WriteColor("["+c.ID+"] ", ConsoleColor.Black, ConsoleColor.Magenta);
             System.Console.WriteLine(message);
         }
     }

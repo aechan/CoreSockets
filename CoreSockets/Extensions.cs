@@ -6,7 +6,7 @@ using System.Net;
 using System.Net.NetworkInformation;
 using System.Linq;
 
-namespace CoreSockets
+namespace CoreSockets.Service
 {
     public static class Console
     {

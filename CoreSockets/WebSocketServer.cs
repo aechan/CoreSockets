@@ -7,9 +7,9 @@ using System.Security.Cryptography;
 using System.Text.RegularExpressions;
 using System.Threading;
 
-namespace CoreSockets
+namespace CoreSockets.Service
 {
-    class WebSocketServer
+    public class WebSocketServer
     {
         public int port
         {
@@ -32,7 +32,7 @@ namespace CoreSockets
         // flag to hop out of the listen loop
         private bool isListening;
         
-        public delegate void OnMessageHandler(string msg);
+        public delegate void OnMessageHandler(string msg, Client c);
         public event OnMessageHandler OnMessage = delegate { };
 
 
@@ -77,7 +77,7 @@ namespace CoreSockets
         {
             this.port = port;
             this.ip = ip;
-            
+            Clients = new List<Client>();
             _server = new TcpListener(ip, port);
         }
 
@@ -120,14 +120,20 @@ namespace CoreSockets
                     // after a successful handshake spawn a new thread and keep connection alive indefinitely.
                     var childSocketThread = new Thread(async () =>
                     {
-                        while (tcpClient.GetState() == System.Net.NetworkInformation.TcpState.Established)
+                        // add new client to our collection for management.
+                        Client client = new Client(Guid.NewGuid().ToString(), this);
+                        Clients.Add(client);
+
+                        while (tcpClient.Connected)
                         {
+                            //var c = Clients.Find(r => r.ID.Equals(client.ID));
+
                             var buf = new byte[4096];
                             var count = await networkStream.ReadAsync(buf, 0, buf.Length);
 
-                            OnMessage(GetDecodedData(buf, count));
+                            OnMessage(GetDecodedData(buf, count), client);
                         }
-
+                        
                     });
                     childSocketThread.Start();                        
                 }
@@ -161,6 +167,9 @@ namespace CoreSockets
                     var response = Encoding.UTF8.GetString(buffer, 0, byteCount);
                     Console.WriteColor("[Client] ", ConsoleColor.Black, ConsoleColor.Magenta);
                     System.Console.WriteLine("Server response was {0}", response);
+
+                    var helloMessage = Encoding.UTF8.GetBytes("Hello from client");
+                    await networkStream.WriteAsync(helloMessage, 0, helloMessage.Length);
                 }
             }
         }
@@ -170,7 +179,7 @@ namespace CoreSockets
         /// <param name="buffer"></param>
         /// <param name="length"></param>
         /// <returns></returns>
-        private static string GetDecodedData(byte[] buffer, int length)
+        public static string GetDecodedData(byte[] buffer, int length)
         {
             byte b = buffer[1];
             int dataLength = 0;
@@ -199,7 +208,10 @@ namespace CoreSockets
             }
 
             if (totalLength > length)
-                throw new Exception("The buffer length is small than the data length");
+                return null;
+
+            if (dataLength < 0)
+                return null;
 
             byte[] key = new byte[] { buffer[keyIndex], buffer[keyIndex + 1], buffer[keyIndex + 2], buffer[keyIndex + 3] };
 
